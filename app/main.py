@@ -35,12 +35,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if not settings.has_openai_key:
         logger.warning("OpenAI API key not configured - chat functionality will be limited")
 
-    # Check database exists
-    db_path = Path(settings.database_path)
-    if not db_path.exists():
-        logger.warning(f"Database not found at {db_path} - some features may not work")
+    # Check database configuration
+    db_path = settings.database_path
+    if db_path.startswith("md:"):
+        # MotherDuck cloud database
+        import os
+        if os.environ.get("motherduck_token"):
+            logger.info(f"MotherDuck database configured: {db_path}")
+        else:
+            logger.warning("MotherDuck token not configured - database features may not work")
     else:
-        logger.info(f"Database found at {db_path}")
+        # Local file database
+        if not Path(db_path).exists():
+            logger.warning(f"Database not found at {db_path} - some features may not work")
+        else:
+            logger.info(f"Database found at {db_path}")
 
     yield
 

@@ -13,6 +13,8 @@ dependencies = [
     "pydantic-settings>=2.6.0",
     "python-dotenv>=1.0.0",
     "duckdb>=1.0.0",
+    # Landuse package for AI agent (from git)
+    "rpa-landuse-analytics @ git+https://github.com/mihiarc/rpa-landuse.git",
 ]
 
 [project.optional-dependencies]

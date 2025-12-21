@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: rpa-landuse-backend
+    runtime: python
+    region: oregon
+    plan: starter
+    buildCommand: pip install uv && uv pip install --system -e .
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/health/live
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: motherduck_token
+        sync: false
+      - key: LANDUSE_DATABASE__PATH
+        value: md:landuse_analytics
+      - key: CORS_ORIGINS
+        value: '["https://*.netlify.app", "http://localhost:3000"]'

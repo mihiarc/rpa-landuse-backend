@@ -1,6 +1,7 @@
 """Database service for direct DuckDB operations."""
 
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -16,6 +17,8 @@ class DatabaseService:
 
     Used for analytics, explorer, and extraction endpoints that need
     direct database access without going through the agent.
+
+    Supports both local file paths and MotherDuck cloud connections.
     """
 
     def __init__(self, database_path: str, read_only: bool = True):
@@ -23,36 +26,51 @@ class DatabaseService:
         Initialize database service.
 
         Args:
-            database_path: Path to the DuckDB database file
+            database_path: Path to DuckDB file OR MotherDuck connection string (md:database_name)
             read_only: Whether to open in read-only mode
         """
-        self.database_path = Path(database_path)
+        self.database_path = database_path
+        self.is_motherduck = database_path.startswith("md:")
         self.read_only = read_only
         self._connection: Optional[duckdb.DuckDBPyConnection] = None
 
     @property
     def is_available(self) -> bool:
-        """Check if database file exists."""
-        return self.database_path.exists()
+        """Check if database is available."""
+        if self.is_motherduck:
+            # For MotherDuck, check if token is configured
+            return bool(os.environ.get("motherduck_token"))
+        return Path(self.database_path).exists()
 
     @property
     def file_size_mb(self) -> float:
-        """Get database file size in MB."""
-        if self.is_available:
-            return self.database_path.stat().st_size / (1024 * 1024)
+        """Get database file size in MB (returns 0 for MotherDuck)."""
+        if self.is_motherduck:
+            return 0.0
+        path = Path(self.database_path)
+        if path.exists():
+            return path.stat().st_size / (1024 * 1024)
         return 0.0
 
     def _get_connection(self) -> duckdb.DuckDBPyConnection:
         """Get or create database connection."""
         if self._connection is None:
             if not self.is_available:
+                if self.is_motherduck:
+                    raise RuntimeError("MotherDuck token not configured. Set motherduck_token environment variable.")
                 raise RuntimeError(f"Database not found at {self.database_path}")
 
-            self._connection = duckdb.connect(
-                str(self.database_path),
-                read_only=self.read_only
-            )
-            logger.info(f"Connected to database: {self.database_path}")
+            if self.is_motherduck:
+                # MotherDuck connection
+                self._connection = duckdb.connect(self.database_path)
+                logger.info(f"Connected to MotherDuck: {self.database_path}")
+            else:
+                # Local file connection
+                self._connection = duckdb.connect(
+                    str(self.database_path),
+                    read_only=self.read_only
+                )
+                logger.info(f"Connected to database: {self.database_path}")
 
         return self._connection
 

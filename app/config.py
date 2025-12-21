@@ -25,16 +25,22 @@ class Settings(BaseSettings):
 
     # CORS Settings
     cors_origins: List[str] = Field(
-        default=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"],
+        default=[
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:3001",
+            "http://127.0.0.1:3001",
+            "https://*.netlify.app",
+        ],
         description="Allowed CORS origins",
     )
 
     # OpenAI Settings
     openai_api_key: Optional[str] = Field(default=None, description="OpenAI API key")
 
-    # Database Settings
+    # Database Settings (supports local files or MotherDuck: md:database_name)
     database_path: str = Field(
-        default="data/processed/landuse_analytics.duckdb",
+        default="md:landuse_analytics",
         alias="LANDUSE_DATABASE__PATH",
     )
     database_read_only: bool = True

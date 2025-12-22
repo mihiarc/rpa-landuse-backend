@@ -61,9 +61,9 @@ class DatabaseService:
                 raise RuntimeError(f"Database not found at {self.database_path}")
 
             if self.is_motherduck:
-                # MotherDuck connection
-                self._connection = duckdb.connect(self.database_path)
-                logger.info(f"Connected to MotherDuck: {self.database_path}")
+                # MotherDuck connection - use read_only to match agent's connection config
+                self._connection = duckdb.connect(self.database_path, read_only=self.read_only)
+                logger.info(f"Connected to MotherDuck: {self.database_path} (read_only={self.read_only})")
             else:
                 # Local file connection
                 self._connection = duckdb.connect(

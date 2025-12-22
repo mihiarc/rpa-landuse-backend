@@ -184,24 +184,29 @@ class AgentService:
         """
         Clear conversation history for a session.
 
+        Completely reinitializes the agent to ensure all history is cleared.
+
         Args:
             session_id: The session ID to clear
 
         Returns:
-            True if session was cleared, False if not found
+            True if cleared successfully
         """
-        # Clear from local sessions dict
-        if session_id in self._sessions:
-            del self._sessions[session_id]
+        logger.info(f"Clearing session {session_id} - reinitializing agent")
 
-        # ALWAYS clear the agent's internal conversation history
-        # (agent is a singleton, so clear regardless of session)
+        # Clear local sessions
+        self._sessions.clear()
+
+        # Completely destroy and reinitialize the agent
+        # This ensures ALL history is cleared (conversation manager, graph state, etc.)
         if self._agent:
             try:
-                self._agent.clear_history()
-                logger.info(f"Cleared agent conversation history for session {session_id}")
+                self._agent.__exit__(None, None, None)
             except Exception as e:
-                logger.error(f"Failed to clear agent history: {e}")
+                logger.warning(f"Error closing agent: {e}")
+            self._agent = None
+            self._initialized = False
+            logger.info("Agent destroyed - will reinitialize on next query")
 
         return True
 

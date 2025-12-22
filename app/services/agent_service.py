@@ -190,18 +190,20 @@ class AgentService:
         Returns:
             True if session was cleared, False if not found
         """
+        # Clear from local sessions dict
         if session_id in self._sessions:
             del self._sessions[session_id]
 
-            # Also clear agent's internal history if using same session
+        # ALWAYS clear the agent's internal conversation history
+        # (agent is a singleton, so clear regardless of session)
+        if self._agent:
             try:
-                if self._agent:
-                    self._agent.clear_history()
-            except Exception:
-                pass
+                self._agent.clear_history()
+                logger.info(f"Cleared agent conversation history for session {session_id}")
+            except Exception as e:
+                logger.error(f"Failed to clear agent history: {e}")
 
-            return True
-        return False
+        return True
 
     def get_session_history(self, session_id: str) -> list:
         """Get conversation history for a session."""

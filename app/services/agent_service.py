@@ -103,10 +103,11 @@ class AgentService:
 
         try:
             # Run synchronous agent in thread pool
+            # Pass session_id as thread_id for proper session isolation
             agent = self._get_agent()
             response = await loop.run_in_executor(
                 self._executor,
-                lambda: agent.query(question, use_graph=False)
+                lambda: agent.query(question, use_graph=False, thread_id=session_id)
             )
 
             execution_time = time.time() - start_time
@@ -182,9 +183,11 @@ class AgentService:
 
     def clear_session(self, session_id: str) -> bool:
         """
-        Clear conversation history for a session.
+        Clear conversation history for a specific session.
 
-        Completely reinitializes the agent to ensure all history is cleared.
+        Uses thread-specific clearing to only clear the specified session's history
+        without affecting other users. The agent now supports per-session isolation
+        using thread_id.
 
         Args:
             session_id: The session ID to clear
@@ -192,21 +195,28 @@ class AgentService:
         Returns:
             True if cleared successfully
         """
-        logger.info(f"Clearing session {session_id} - reinitializing agent")
+        logger.info(f"Clearing session {session_id}")
 
-        # Clear local sessions
-        self._sessions.clear()
+        # Clear local session storage for this session
+        if session_id in self._sessions:
+            del self._sessions[session_id]
 
-        # Completely destroy and reinitialize the agent
-        # This ensures ALL history is cleared (conversation manager, graph state, etc.)
+        # Clear the thread-specific conversation history in the agent
+        # This uses the new per-session ConversationManager architecture
         if self._agent:
             try:
-                self._agent.__exit__(None, None, None)
+                # Clear only the specific thread's history
+                self._agent.clear_history(thread_id=session_id)
+                logger.info(f"Cleared conversation history for thread {session_id}")
             except Exception as e:
-                logger.warning(f"Error closing agent: {e}")
-            self._agent = None
-            self._initialized = False
-            logger.info("Agent destroyed - will reinitialize on next query")
+                logger.warning(f"Error clearing thread history: {e}")
+                # Fallback: if the agent doesn't support per-thread clearing,
+                # clear all history (backward compatibility)
+                try:
+                    self._agent.clear_history()
+                    logger.info("Cleared all conversation history (fallback)")
+                except Exception as e2:
+                    logger.error(f"Failed to clear history: {e2}")
 
         return True
 

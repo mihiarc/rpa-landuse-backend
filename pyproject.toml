@@ -17,7 +17,7 @@ dependencies = [
     "bcrypt>=4.0.0",
     "PyJWT>=2.8.0",
     # Landuse package for AI agent (from git - pinned to latest)
-    "rpa-landuse-analytics @ git+https://github.com/mihiarc/rpa-landuse.git@33c7e78ece5ea88e190d483eaa0d08b059f196f8",
+    "rpa-landuse-analytics @ git+https://github.com/mihiarc/rpa-landuse.git@e9db71f",
 ]
 
 [project.optional-dependencies]

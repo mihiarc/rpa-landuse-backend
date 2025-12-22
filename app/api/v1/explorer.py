@@ -133,9 +133,10 @@ async def get_query_templates():
     g.state_name,
     SUM(f.acres) as total_forest_loss
 FROM fact_landuse_transitions f
-JOIN dim_geography g ON f.geography_key = g.geography_key
-JOIN dim_landuse l_from ON f.from_landuse_key = l_from.landuse_key
+JOIN dim_geography g ON f.geography_id = g.geography_id
+JOIN dim_landuse l_from ON f.from_landuse_id = l_from.landuse_id
 WHERE l_from.landuse_name = 'Forest'
+  AND f.transition_type = 'change'
 GROUP BY g.state_name
 ORDER BY total_forest_loss DESC
 LIMIT 10""",
@@ -149,9 +150,10 @@ LIMIT 10""",
     s.scenario_name,
     SUM(f.acres) as urban_growth
 FROM fact_landuse_transitions f
-JOIN dim_scenario s ON f.scenario_key = s.scenario_key
-JOIN dim_landuse l_to ON f.to_landuse_key = l_to.landuse_key
+JOIN dim_scenario s ON f.scenario_id = s.scenario_id
+JOIN dim_landuse l_to ON f.to_landuse_id = l_to.landuse_id
 WHERE l_to.landuse_name = 'Urban'
+  AND f.transition_type = 'change'
 GROUP BY s.scenario_name
 ORDER BY urban_growth DESC""",
             },
@@ -165,9 +167,10 @@ ORDER BY urban_growth DESC""",
     g.state_name,
     SUM(f.acres) as urban_growth
 FROM fact_landuse_transitions f
-JOIN dim_geography g ON f.geography_key = g.geography_key
-JOIN dim_landuse l_to ON f.to_landuse_key = l_to.landuse_key
+JOIN dim_geography g ON f.geography_id = g.geography_id
+JOIN dim_landuse l_to ON f.to_landuse_id = l_to.landuse_id
 WHERE l_to.landuse_name = 'Urban'
+  AND f.transition_type = 'change'
 GROUP BY g.county_name, g.state_name
 ORDER BY urban_growth DESC
 LIMIT 20""",
@@ -178,14 +181,15 @@ LIMIT 20""",
                 "category": "Temporal",
                 "description": "See how land use changes over time",
                 "query": """SELECT
-    t.year,
+    t.year_range,
     l_to.landuse_name as to_landuse,
     SUM(f.acres) as total_acres
 FROM fact_landuse_transitions f
-JOIN dim_time t ON f.time_key = t.time_key
-JOIN dim_landuse l_to ON f.to_landuse_key = l_to.landuse_key
-GROUP BY t.year, l_to.landuse_name
-ORDER BY t.year, total_acres DESC""",
+JOIN dim_time t ON f.time_id = t.time_id
+JOIN dim_landuse l_to ON f.to_landuse_id = l_to.landuse_id
+WHERE f.transition_type = 'change'
+GROUP BY t.year_range, l_to.landuse_name
+ORDER BY t.year_range, total_acres DESC""",
             },
         ]
     }

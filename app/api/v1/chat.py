@@ -8,12 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.config import get_settings
-from app.dependencies import get_agent_service
+from app.dependencies import get_agent_service, require_auth
 from app.models.requests import ChatRequest
 from app.models.responses import ChatResponse, StreamChunk
 from app.services.agent_service import AgentService
 
-router = APIRouter(prefix="/chat")
+router = APIRouter(prefix="/chat", dependencies=[Depends(require_auth)])
 logger = logging.getLogger(__name__)
 settings = get_settings()
 

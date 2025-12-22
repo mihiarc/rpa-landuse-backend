@@ -5,11 +5,11 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.dependencies import get_database_service_singleton
+from app.dependencies import get_database_service_singleton, require_auth
 from app.models.responses import AnalyticsResponse
 from app.services.database_service import DatabaseService
 
-router = APIRouter(prefix="/analytics")
+router = APIRouter(prefix="/analytics", dependencies=[Depends(require_auth)])
 logger = logging.getLogger(__name__)
 
 

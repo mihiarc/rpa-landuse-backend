@@ -9,12 +9,12 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
-from app.dependencies import get_database_service_singleton
+from app.dependencies import get_database_service_singleton, require_auth
 from app.models.requests import ExtractionRequest
 from app.models.responses import ExtractionResponse
 from app.services.database_service import DatabaseService
 
-router = APIRouter(prefix="/extraction")
+router = APIRouter(prefix="/extraction", dependencies=[Depends(require_auth)])
 logger = logging.getLogger(__name__)
 
 

@@ -35,6 +35,28 @@ class Settings(BaseSettings):
         description="Allowed CORS origins",
     )
 
+    # Authentication Settings
+    auth_password_hash: Optional[str] = Field(
+        default=None,
+        alias="AUTH_PASSWORD_HASH",
+        description="bcrypt hash of the shared password",
+    )
+    auth_jwt_secret: Optional[str] = Field(
+        default=None,
+        alias="AUTH_JWT_SECRET",
+        description="Secret key for JWT signing",
+    )
+    auth_access_token_expire: int = Field(
+        default=1800,
+        alias="AUTH_ACCESS_TOKEN_EXPIRE",
+        description="Access token expiry in seconds (default 30 min)",
+    )
+    auth_refresh_token_expire: int = Field(
+        default=604800,
+        alias="AUTH_REFRESH_TOKEN_EXPIRE",
+        description="Refresh token expiry in seconds (default 7 days)",
+    )
+
     # OpenAI Settings
     openai_api_key: Optional[str] = Field(default=None, description="OpenAI API key")
 
@@ -71,6 +93,11 @@ class Settings(BaseSettings):
     def has_openai_key(self) -> bool:
         """Check if OpenAI API key is configured."""
         return bool(self.openai_api_key)
+
+    @property
+    def auth_enabled(self) -> bool:
+        """Check if authentication is configured."""
+        return bool(self.auth_password_hash and self.auth_jwt_secret)
 
 
 @lru_cache

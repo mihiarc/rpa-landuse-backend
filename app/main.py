@@ -9,7 +9,7 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import health, chat, analytics, explorer, extraction
+from app.api.v1 import health, chat, analytics, explorer, extraction, auth
 from app.config import get_settings
 from app.dependencies import cleanup_services
 
@@ -34,6 +34,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup: Validate configuration
     if not settings.has_openai_key:
         logger.warning("OpenAI API key not configured - chat functionality will be limited")
+
+    if settings.auth_enabled:
+        logger.info("Authentication enabled")
+    else:
+        logger.warning("Authentication not configured - API is publicly accessible")
 
     # Check database configuration
     db_path = settings.database_path
@@ -80,6 +85,7 @@ app.add_middleware(
 
 # Include API routers
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
+app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
 app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
 app.include_router(analytics.router, prefix="/api/v1", tags=["analytics"])
 app.include_router(explorer.router, prefix="/api/v1", tags=["explorer"])

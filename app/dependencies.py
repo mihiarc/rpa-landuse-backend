@@ -2,7 +2,9 @@
 
 import logging
 from functools import lru_cache
-from typing import Generator
+from typing import Generator, Optional
+
+from fastapi import Cookie, HTTPException, status
 
 from app.config import Settings
 from app.services.agent_service import AgentService
@@ -88,3 +90,32 @@ def cleanup_services():
         _database_service.close()
         _database_service = None
         logger.info("DatabaseService cleaned up")
+
+
+async def require_auth(
+    access_token: Optional[str] = Cookie(default=None),
+) -> None:
+    """
+    Dependency that requires valid authentication.
+
+    If auth is not configured, allows all requests.
+    If auth is configured, requires valid access token.
+    """
+    from app.api.v1.auth import verify_token
+
+    settings = get_settings()
+
+    if not settings.auth_enabled:
+        return
+
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+
+    if not verify_token(access_token, "access"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )

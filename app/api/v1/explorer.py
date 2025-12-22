@@ -4,12 +4,12 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.dependencies import get_database_service_singleton
+from app.dependencies import get_database_service_singleton, require_auth
 from app.models.requests import SqlQueryRequest
 from app.models.responses import QueryResultResponse, SchemaResponse
 from app.services.database_service import DatabaseService
 
-router = APIRouter(prefix="/explorer")
+router = APIRouter(prefix="/explorer", dependencies=[Depends(require_auth)])
 logger = logging.getLogger(__name__)
 
 

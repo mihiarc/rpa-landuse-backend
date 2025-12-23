@@ -24,13 +24,15 @@ class Settings(BaseSettings):
     debug: bool = False
 
     # CORS Settings
+    # SECURITY: Use explicit production URLs, never wildcards
+    # Wildcards like "https://*.netlify.app" allow ANY Netlify app to make credentialed requests
     cors_origins: List[str] = Field(
         default=[
             "http://localhost:3000",
             "http://127.0.0.1:3000",
             "http://localhost:3001",
             "http://127.0.0.1:3001",
-            "https://*.netlify.app",
+            "https://rpa-landuse-frontend.netlify.app",
         ],
         description="Allowed CORS origins",
     )

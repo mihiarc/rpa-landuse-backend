@@ -59,8 +59,13 @@ class Settings(BaseSettings):
         description="Refresh token expiry in seconds (default 7 days)",
     )
 
-    # OpenAI Settings
-    openai_api_key: Optional[str] = Field(default=None, description="OpenAI API key")
+    # API Keys
+    openai_api_key: Optional[str] = Field(default=None, description="OpenAI API key (legacy)")
+    anthropic_api_key: Optional[str] = Field(
+        default=None,
+        alias="ANTHROPIC_API_KEY",
+        description="Anthropic API key for Claude"
+    )
 
     # Database Settings (supports local files or MotherDuck: md:database_name)
     database_path: str = Field(
@@ -110,8 +115,18 @@ class Settings(BaseSettings):
 
     @property
     def has_openai_key(self) -> bool:
-        """Check if OpenAI API key is configured."""
+        """Check if OpenAI API key is configured (legacy)."""
         return bool(self.openai_api_key)
+
+    @property
+    def has_anthropic_key(self) -> bool:
+        """Check if Anthropic API key is configured."""
+        return bool(self.anthropic_api_key)
+
+    @property
+    def has_llm_key(self) -> bool:
+        """Check if any LLM API key is configured (Anthropic preferred)."""
+        return self.has_anthropic_key or self.has_openai_key
 
     @property
     def auth_enabled(self) -> bool:

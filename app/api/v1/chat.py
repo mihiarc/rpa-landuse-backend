@@ -33,15 +33,15 @@ async def query(
     """
     Execute a natural language query against the land use database.
 
-    Uses the LanduseAgent to convert natural language to SQL and
-    return results with business insights.
+    Uses the LandUseAgent with Claude to answer questions about
+    land use projections and transitions.
 
     Rate limited for academic users (50 queries/day by default).
     """
-    if not settings.has_openai_key:
+    if not settings.has_anthropic_key:
         raise HTTPException(
             status_code=503,
-            detail="OpenAI API key not configured. Please set OPENAI_API_KEY environment variable.",
+            detail="Anthropic API key not configured. Please set ANTHROPIC_API_KEY environment variable.",
         )
 
     try:
@@ -82,10 +82,10 @@ async def stream_query(
 
     Provides real-time response streaming for a more interactive experience.
     """
-    if not settings.has_openai_key:
+    if not settings.has_anthropic_key:
         raise HTTPException(
             status_code=503,
-            detail="OpenAI API key not configured.",
+            detail="Anthropic API key not configured.",
         )
 
     async def generate() -> AsyncGenerator[str, None]:
@@ -163,7 +163,7 @@ async def chat_status(
 ):
     """Get chat service status."""
     return {
-        "available": settings.has_openai_key,
+        "available": settings.has_anthropic_key,
         "model": agent_service.model_name,
         "initialized": agent_service.is_initialized,
     }

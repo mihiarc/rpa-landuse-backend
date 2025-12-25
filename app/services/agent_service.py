@@ -1,9 +1,8 @@
-"""Agent service wrapping the LanduseAgent for FastAPI integration."""
+"""Agent service wrapping the LandUseAgent for FastAPI integration."""
 
 import asyncio
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import AsyncIterator, Dict, Optional
 
@@ -23,20 +22,19 @@ class QueryResponse:
 class StreamChunk:
     """Chunk of streaming response."""
 
-    type: str  # 'start', 'content', 'sql', 'complete', 'error'
+    type: str  # 'start', 'content', 'tool_call', 'tool_result', 'complete', 'error'
     content: Optional[str] = None
     metadata: Optional[Dict] = None
 
 
 class AgentService:
     """
-    Service layer wrapping the LanduseAgent for async API use.
+    Service layer wrapping the LandUseAgent for async API use.
 
     Handles:
-    - Async execution of synchronous agent methods
+    - Async streaming of agent responses
     - Session/conversation management
-    - Streaming response generation
-    - Error handling and retry logic
+    - Error handling
     """
 
     def __init__(self, database_path: Optional[str] = None):
@@ -47,16 +45,15 @@ class AgentService:
             database_path: Optional path to the DuckDB database
         """
         self._agent = None
-        self._executor = ThreadPoolExecutor(max_workers=4)
         self._sessions: Dict[str, list] = {}  # session_id -> conversation history
         self._database_path = database_path
         self._initialized = False
 
     def _get_agent(self):
-        """Lazy-load the LanduseAgent."""
+        """Lazy-load the LandUseAgent."""
         if self._agent is None:
             try:
-                from landuse.agents.landuse_agent import LanduseAgent
+                from landuse.agents.landuse_agent import LandUseAgent
                 from landuse.core.app_config import AppConfig
 
                 # Create config with optional database path override
@@ -65,11 +62,11 @@ class AgentService:
                     os.environ["LANDUSE_DATABASE__PATH"] = self._database_path
 
                 config = AppConfig()
-                self._agent = LanduseAgent(config)
+                self._agent = LandUseAgent(config)
                 self._initialized = True
-                logger.info(f"LanduseAgent initialized with model: {self._agent.model_name}")
+                logger.info(f"LandUseAgent initialized with model: {self._agent.model_name}")
             except Exception as e:
-                logger.error(f"Failed to initialize LanduseAgent: {e}")
+                logger.error(f"Failed to initialize LandUseAgent: {e}")
                 raise RuntimeError(f"Agent initialization failed: {e}")
 
         return self._agent
@@ -99,16 +96,24 @@ class AgentService:
             QueryResponse with the agent's response
         """
         start_time = time.time()
-        loop = asyncio.get_event_loop()
 
         try:
-            # Run synchronous agent in thread pool
-            # Pass session_id as thread_id for proper session isolation
             agent = self._get_agent()
-            response = await loop.run_in_executor(
-                self._executor,
-                lambda: agent.query(question, use_graph=False, thread_id=session_id)
-            )
+
+            # Build message history for context
+            messages = []
+            if session_id and session_id in self._sessions:
+                for item in self._sessions[session_id][-10:]:  # Last 10 exchanges
+                    messages.append({"role": "user", "content": item["question"]})
+                    messages.append({"role": "assistant", "content": item["response"]})
+
+            messages.append({"role": "user", "content": question})
+
+            # Stream and collect the full response
+            response_text = ""
+            async for event in agent.stream(messages):
+                if event["type"] == "text":
+                    response_text = event["content"]
 
             execution_time = time.time() - start_time
 
@@ -118,13 +123,13 @@ class AgentService:
                     self._sessions[session_id] = []
                 self._sessions[session_id].append({
                     "question": question,
-                    "response": response,
+                    "response": response_text,
                     "timestamp": time.time()
                 })
 
             return QueryResponse(
-                content=response,
-                sql_query=None,  # TODO: Extract SQL from agent if available
+                content=response_text,
+                sql_query=None,
                 execution_time=execution_time,
             )
 
@@ -154,28 +159,67 @@ class AgentService:
         start_time = time.time()
 
         try:
-            # Use simulated streaming with non-streaming query
-            # (Native LangGraph streaming has compatibility issues with tool messages)
-            response = await self.query(question, session_id)
+            agent = self._get_agent()
 
-            # Stream in word chunks for a streaming effect
-            words = response.content.split()
-            chunk_size = 5
+            # Build message history for context
+            messages = []
+            if session_id and session_id in self._sessions:
+                for item in self._sessions[session_id][-10:]:  # Last 10 exchanges
+                    messages.append({"role": "user", "content": item["question"]})
+                    messages.append({"role": "assistant", "content": item["response"]})
 
-            for i in range(0, len(words), chunk_size):
-                chunk_words = words[i:i + chunk_size]
-                yield StreamChunk(
-                    type="content",
-                    content=" ".join(chunk_words) + " "
-                )
-                await asyncio.sleep(0.03)
+            messages.append({"role": "user", "content": question})
 
-            # Send completion
-            execution_time = time.time() - start_time
-            yield StreamChunk(
-                type="complete",
-                metadata={"execution_time": execution_time}
-            )
+            full_response = ""
+
+            # Stream from the new agent
+            async for event in agent.stream(messages):
+                event_type = event.get("type")
+
+                if event_type == "text":
+                    content = event.get("content", "")
+                    full_response = content
+
+                    # Stream content in small chunks for real-time display
+                    words = content.split()
+                    chunk_size = 5
+                    for i in range(0, len(words), chunk_size):
+                        chunk_words = words[i:i + chunk_size]
+                        yield StreamChunk(
+                            type="content",
+                            content=" ".join(chunk_words) + " "
+                        )
+                        await asyncio.sleep(0.02)
+
+                elif event_type == "tool_call":
+                    yield StreamChunk(
+                        type="tool_call",
+                        content=f"Querying: {event.get('tool_name', 'data')}",
+                        metadata={"tool_name": event.get("tool_name"), "args": event.get("args")}
+                    )
+
+                elif event_type == "tool_result":
+                    yield StreamChunk(
+                        type="tool_result",
+                        metadata={"tool_call_id": event.get("tool_call_id")}
+                    )
+
+                elif event_type == "finish":
+                    # Store in session
+                    if session_id and full_response:
+                        if session_id not in self._sessions:
+                            self._sessions[session_id] = []
+                        self._sessions[session_id].append({
+                            "question": question,
+                            "response": full_response,
+                            "timestamp": time.time()
+                        })
+
+                    execution_time = time.time() - start_time
+                    yield StreamChunk(
+                        type="complete",
+                        metadata={"execution_time": execution_time}
+                    )
 
         except Exception as e:
             logger.exception(f"Streaming error: {e}")
@@ -184,10 +228,6 @@ class AgentService:
     def clear_session(self, session_id: str) -> bool:
         """
         Clear conversation history for a specific session.
-
-        Uses thread-specific clearing to only clear the specified session's history
-        without affecting other users. The agent now supports per-session isolation
-        using thread_id.
 
         Args:
             session_id: The session ID to clear
@@ -201,22 +241,13 @@ class AgentService:
         if session_id in self._sessions:
             del self._sessions[session_id]
 
-        # Clear the thread-specific conversation history in the agent
-        # This uses the new per-session ConversationManager architecture
+        # Clear agent's internal history
         if self._agent:
             try:
-                # Clear only the specific thread's history
-                self._agent.clear_history(thread_id=session_id)
-                logger.info(f"Cleared conversation history for thread {session_id}")
+                self._agent.clear_history()
+                logger.info(f"Cleared agent conversation history")
             except Exception as e:
-                logger.warning(f"Error clearing thread history: {e}")
-                # Fallback: if the agent doesn't support per-thread clearing,
-                # clear all history (backward compatibility)
-                try:
-                    self._agent.clear_history()
-                    logger.info("Cleared all conversation history (fallback)")
-                except Exception as e2:
-                    logger.error(f"Failed to clear history: {e2}")
+                logger.warning(f"Error clearing agent history: {e}")
 
         return True
 
@@ -233,6 +264,5 @@ class AgentService:
                 pass
             self._agent = None
 
-        self._executor.shutdown(wait=False)
         self._sessions.clear()
         self._initialized = False

@@ -88,6 +88,23 @@ class Settings(BaseSettings):
     rate_limit_calls: int = Field(default=60, alias="LANDUSE_SECURITY__RATE_LIMIT_CALLS")
     rate_limit_window: int = Field(default=60, alias="LANDUSE_SECURITY__RATE_LIMIT_WINDOW")
 
+    # Academic Tier Settings
+    academic_tier_enabled: bool = Field(
+        default=True,
+        alias="ACADEMIC_TIER_ENABLED",
+        description="Enable free academic tier with email-only registration",
+    )
+    academic_daily_query_limit: int = Field(
+        default=50,
+        alias="ACADEMIC_DAILY_QUERY_LIMIT",
+        description="Maximum AI queries per day for academic users",
+    )
+    academic_user_db_path: str = Field(
+        default="data/academic_users.db",
+        alias="ACADEMIC_USER_DB_PATH",
+        description="SQLite database path for academic user storage",
+    )
+
     # Logging
     log_level: str = Field(default="INFO", alias="LANDUSE_LOGGING__LEVEL")
 

@@ -8,7 +8,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.config import get_settings
-from app.dependencies import get_agent_service, require_auth
+from app.dependencies import (
+    AcademicUserInfo,
+    get_academic_user,
+    get_agent_service,
+    increment_academic_usage,
+    require_auth,
+)
 from app.models.requests import ChatRequest
 from app.models.responses import ChatResponse, StreamChunk
 from app.services.agent_service import AgentService
@@ -22,12 +28,15 @@ settings = get_settings()
 async def query(
     request: ChatRequest,
     agent_service: AgentService = Depends(get_agent_service),
+    academic_user: AcademicUserInfo = Depends(get_academic_user),
 ) -> ChatResponse:
     """
     Execute a natural language query against the land use database.
 
     Uses the LanduseAgent to convert natural language to SQL and
     return results with business insights.
+
+    Rate limited for academic users (50 queries/day by default).
     """
     if not settings.has_openai_key:
         raise HTTPException(
@@ -40,6 +49,14 @@ async def query(
             question=request.question,
             session_id=request.session_id,
         )
+
+        # Increment usage for academic users after successful query
+        if academic_user.is_academic:
+            increment_academic_usage(academic_user.email)
+            logger.info(
+                f"Academic user {academic_user.email} used query "
+                f"({academic_user.queries_remaining - 1} remaining)"
+            )
 
         return ChatResponse(
             success=True,
@@ -58,6 +75,7 @@ async def query(
 async def stream_query(
     request: ChatRequest,
     agent_service: AgentService = Depends(get_agent_service),
+    academic_user: AcademicUserInfo = Depends(get_academic_user),
 ):
     """
     Stream response for natural language query using Server-Sent Events (SSE).
@@ -91,6 +109,14 @@ async def stream_query(
                     yield f"data: {chunk_data.model_dump_json()}\n\n"
 
                 elif chunk.type == "complete":
+                    # Increment usage for academic users after successful completion
+                    if academic_user.is_academic:
+                        increment_academic_usage(academic_user.email)
+                        logger.info(
+                            f"Academic user {academic_user.email} used streaming query "
+                            f"({academic_user.queries_remaining - 1} remaining)"
+                        )
+
                     complete_data = {
                         "type": "complete",
                         "metadata": chunk.metadata or {},

@@ -9,7 +9,7 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import health, chat, analytics, explorer, extraction, auth
+from app.api.v1 import health, chat, analytics, explorer, extraction, auth, citation
 from app.config import get_settings
 from app.dependencies import cleanup_services
 
@@ -90,6 +90,7 @@ app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
 app.include_router(analytics.router, prefix="/api/v1", tags=["analytics"])
 app.include_router(explorer.router, prefix="/api/v1", tags=["explorer"])
 app.include_router(extraction.router, prefix="/api/v1", tags=["extraction"])
+app.include_router(citation.router, prefix="/api/v1", tags=["citation"])
 
 
 @app.get("/")

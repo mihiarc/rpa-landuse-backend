@@ -79,7 +79,7 @@ async def health_check() -> HealthResponse:
     return HealthResponse(
         status=overall_status,
         database=database_status,
-        openai=llm_status,  # Keep field name for backward compatibility
+        llm=llm_status,
         timestamp=datetime.utcnow(),
     )
 

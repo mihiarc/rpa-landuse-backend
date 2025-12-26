@@ -11,7 +11,7 @@ class HealthResponse(BaseModel):
 
     status: str = Field(..., description="Overall health status")
     database: Dict[str, Any] = Field(..., description="Database connection status")
-    openai: Dict[str, Any] = Field(..., description="OpenAI API status")
+    llm: Dict[str, Any] = Field(..., description="LLM API status (Anthropic/OpenAI)")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 

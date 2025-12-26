@@ -180,16 +180,12 @@ class AgentService:
                     content = event.get("content", "")
                     full_response = content
 
-                    # Stream content in small chunks for real-time display
-                    words = content.split()
-                    chunk_size = 5
-                    for i in range(0, len(words), chunk_size):
-                        chunk_words = words[i:i + chunk_size]
-                        yield StreamChunk(
-                            type="content",
-                            content=" ".join(chunk_words) + " "
-                        )
-                        await asyncio.sleep(0.02)
+                    # Yield the full content to preserve markdown formatting
+                    # (newlines, tables, lists, etc.)
+                    yield StreamChunk(
+                        type="content",
+                        content=content
+                    )
 
                 elif event_type == "tool_call":
                     yield StreamChunk(

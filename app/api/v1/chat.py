@@ -108,6 +108,14 @@ async def stream_query(
                     chunk_data = StreamChunk(type="content", content=chunk.content)
                     yield f"data: {chunk_data.model_dump_json()}\n\n"
 
+                elif chunk.type == "heartbeat":
+                    # Send heartbeat to keep connection alive
+                    yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
+
+                elif chunk.type == "tool_call":
+                    # Send tool call info
+                    yield f"data: {json.dumps({'type': 'tool_call', 'content': chunk.content})}\n\n"
+
                 elif chunk.type == "complete":
                     # Increment usage for academic users after successful completion
                     if academic_user.is_academic:

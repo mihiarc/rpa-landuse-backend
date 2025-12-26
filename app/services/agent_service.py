@@ -172,8 +172,49 @@ class AgentService:
 
             full_response = ""
 
-            # Stream from the new agent
-            async for event in agent.stream(messages):
+            # Stream from agent with heartbeat to prevent proxy timeouts
+            async def stream_with_heartbeat():
+                """Wrap agent stream with periodic heartbeats."""
+                import asyncio
+
+                queue: asyncio.Queue = asyncio.Queue()
+                finished = False
+
+                async def producer():
+                    nonlocal finished
+                    try:
+                        async for event in agent.stream(messages):
+                            await queue.put(event)
+                    except Exception as e:
+                        logger.exception(f"Producer error: {e}")
+                        await queue.put({"type": "error", "content": str(e)})
+                    finally:
+                        finished = True
+                        await queue.put(None)  # Signal end
+
+                # Start producer task
+                producer_task = asyncio.create_task(producer())
+                heartbeat_interval = 5  # seconds
+
+                try:
+                    while True:
+                        try:
+                            event = await asyncio.wait_for(queue.get(), timeout=heartbeat_interval)
+                            if event is None:
+                                break
+                            yield event
+                        except asyncio.TimeoutError:
+                            if finished:
+                                break
+                            yield {"type": "heartbeat"}
+                finally:
+                    producer_task.cancel()
+                    try:
+                        await producer_task
+                    except asyncio.CancelledError:
+                        pass
+
+            async for event in stream_with_heartbeat():
                 event_type = event.get("type")
 
                 if event_type == "text":
@@ -198,6 +239,13 @@ class AgentService:
                     yield StreamChunk(
                         type="tool_result",
                         metadata={"tool_call_id": event.get("tool_call_id")}
+                    )
+
+                elif event_type == "heartbeat":
+                    # Send heartbeat to keep connection alive
+                    yield StreamChunk(
+                        type="heartbeat",
+                        content="."
                     )
 
                 elif event_type == "finish":

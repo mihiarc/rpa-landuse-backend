@@ -48,15 +48,28 @@ async def health_check() -> HealthResponse:
     database_status = check_database_status()
     db_connected = database_status["connected"]
 
-    # Check OpenAI API key
-    openai_status = {
-        "configured": settings.has_openai_key,
-        "model": settings.llm_model_name,
-        "message": "API key configured" if settings.has_openai_key else "API key not set",
+    # Check LLM API key (Anthropic preferred, OpenAI fallback)
+    has_llm_key = settings.has_anthropic_key or settings.has_openai_key
+
+    if settings.has_anthropic_key:
+        llm_provider = "Anthropic"
+        llm_model = "claude-sonnet-4-20250514"
+    elif settings.has_openai_key:
+        llm_provider = "OpenAI"
+        llm_model = settings.llm_model_name
+    else:
+        llm_provider = "None"
+        llm_model = "not configured"
+
+    llm_status = {
+        "configured": has_llm_key,
+        "model": llm_model,
+        "provider": llm_provider,
+        "message": f"{llm_provider} API key configured" if has_llm_key else "No LLM API key set",
     }
 
     # Determine overall status
-    if db_connected and settings.has_openai_key:
+    if db_connected and has_llm_key:
         overall_status = "healthy"
     elif db_connected:
         overall_status = "degraded"
@@ -66,7 +79,7 @@ async def health_check() -> HealthResponse:
     return HealthResponse(
         status=overall_status,
         database=database_status,
-        openai=openai_status,
+        openai=llm_status,  # Keep field name for backward compatibility
         timestamp=datetime.utcnow(),
     )
 

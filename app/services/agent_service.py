@@ -171,6 +171,7 @@ class AgentService:
             messages.append({"role": "user", "content": question})
 
             full_response = ""
+            previous_content = ""  # Track previous content to compute deltas
 
             # Stream from agent with heartbeat to prevent proxy timeouts
             async def stream_with_heartbeat():
@@ -221,12 +222,22 @@ class AgentService:
                     content = event.get("content", "")
                     full_response = content
 
-                    # Yield the full content to preserve markdown formatting
-                    # (newlines, tables, lists, etc.)
-                    yield StreamChunk(
-                        type="content",
-                        content=content
-                    )
+                    # Compute delta (new characters since last message)
+                    # AI SDK expects incremental deltas, not full content
+                    if content.startswith(previous_content):
+                        delta = content[len(previous_content):]
+                    else:
+                        # Content was replaced, send full content
+                        delta = content
+
+                    previous_content = content
+
+                    # Only yield if there's new content
+                    if delta:
+                        yield StreamChunk(
+                            type="content",
+                            content=delta
+                        )
 
                 elif event_type == "tool_call":
                     yield StreamChunk(

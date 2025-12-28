@@ -1,12 +1,12 @@
 """Academic user service for email registration and query tracking."""
 
 import logging
-import sqlite3
+import os
 from contextlib import contextmanager
-from datetime import date, datetime
-from pathlib import Path
+from datetime import date, datetime, timezone
 from typing import Optional
 
+import duckdb
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -32,8 +32,8 @@ class AcademicUserService:
     """
     Service for managing academic users and their query quotas.
 
-    Uses SQLite for lightweight user storage, separate from the
-    analytics DuckDB database.
+    Uses DuckDB/MotherDuck for persistent cloud storage of user data.
+    Supports both local DuckDB files and MotherDuck cloud connections.
     """
 
     def __init__(self, db_path: str, daily_limit: int = 50):
@@ -41,49 +41,53 @@ class AcademicUserService:
         Initialize academic user service.
 
         Args:
-            db_path: Path to SQLite database file
+            db_path: Path to DuckDB file OR MotherDuck connection string (md:database_name)
             daily_limit: Maximum AI queries per day
         """
         self.db_path = db_path
+        self.is_motherduck = db_path.startswith("md:")
         self.daily_limit = daily_limit
+        self._connection: Optional[duckdb.DuckDBPyConnection] = None
         self._ensure_database()
 
     def _ensure_database(self) -> None:
         """Create database and tables if they don't exist."""
-        db_dir = Path(self.db_path).parent
-        db_dir.mkdir(parents=True, exist_ok=True)
-
         with self._get_connection() as conn:
-            cursor = conn.cursor()
-
             # Users table
-            cursor.execute("""
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS academic_users (
-                    email TEXT PRIMARY KEY,
+                    email VARCHAR PRIMARY KEY,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_access TIMESTAMP
                 )
             """)
 
             # Query usage table
-            cursor.execute("""
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS query_usage (
-                    email TEXT,
+                    email VARCHAR,
                     query_date DATE,
                     query_count INTEGER DEFAULT 0,
-                    PRIMARY KEY (email, query_date),
-                    FOREIGN KEY (email) REFERENCES academic_users(email)
+                    PRIMARY KEY (email, query_date)
                 )
             """)
 
-            conn.commit()
             logger.info(f"Academic user database initialized at {self.db_path}")
 
     @contextmanager
     def _get_connection(self):
         """Get a database connection with context management."""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
+        if self.is_motherduck:
+            # Check for MotherDuck token
+            if not os.environ.get("motherduck_token"):
+                raise RuntimeError("MotherDuck token not configured. Set motherduck_token environment variable.")
+            # MotherDuck connection - need read_only=False for writes
+            conn = duckdb.connect(self.db_path, read_only=False)
+            logger.debug(f"Connected to MotherDuck: {self.db_path}")
+        else:
+            # Local DuckDB file
+            conn = duckdb.connect(self.db_path, read_only=False)
+            logger.debug(f"Connected to local DuckDB: {self.db_path}")
         try:
             yield conn
         finally:
@@ -102,38 +106,35 @@ class AcademicUserService:
             AcademicUser instance
         """
         email = email.lower().strip()
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         with self._get_connection() as conn:
-            cursor = conn.cursor()
-
             # Try to get existing user
-            cursor.execute(
+            result = conn.execute(
                 "SELECT email, created_at, last_access FROM academic_users WHERE email = ?",
-                (email,),
+                [email],
             )
-            row = cursor.fetchone()
+            row = result.fetchone()
 
             if row:
                 # Update last access
-                cursor.execute(
+                conn.execute(
                     "UPDATE academic_users SET last_access = ? WHERE email = ?",
-                    (now, email),
+                    [now, email],
                 )
-                conn.commit()
                 logger.info(f"Returning access for existing academic user: {email}")
+                created_at = row[1] if isinstance(row[1], datetime) else datetime.fromisoformat(str(row[1]))
                 return AcademicUser(
-                    email=row["email"],
-                    created_at=datetime.fromisoformat(row["created_at"]),
+                    email=row[0],
+                    created_at=created_at,
                     last_access=now,
                 )
 
             # Create new user
-            cursor.execute(
+            conn.execute(
                 "INSERT INTO academic_users (email, created_at, last_access) VALUES (?, ?, ?)",
-                (email, now, now),
+                [email, now, now],
             )
-            conn.commit()
             logger.info(f"Registered new academic user: {email}")
 
             return AcademicUser(email=email, created_at=now, last_access=now)
@@ -151,24 +152,24 @@ class AcademicUserService:
         email = email.lower().strip()
 
         with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
+            result = conn.execute(
                 "SELECT email, created_at, last_access FROM academic_users WHERE email = ?",
-                (email,),
+                [email],
             )
-            row = cursor.fetchone()
+            row = result.fetchone()
 
             if not row:
                 return None
 
+            created_at = row[1] if isinstance(row[1], datetime) else datetime.fromisoformat(str(row[1]))
+            last_access = None
+            if row[2]:
+                last_access = row[2] if isinstance(row[2], datetime) else datetime.fromisoformat(str(row[2]))
+
             return AcademicUser(
-                email=row["email"],
-                created_at=datetime.fromisoformat(row["created_at"]),
-                last_access=(
-                    datetime.fromisoformat(row["last_access"])
-                    if row["last_access"]
-                    else None
-                ),
+                email=row[0],
+                created_at=created_at,
+                last_access=last_access,
             )
 
     def get_queries_remaining(self, email: str) -> int:
@@ -185,17 +186,16 @@ class AcademicUserService:
         today = date.today()
 
         with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
+            result = conn.execute(
                 "SELECT query_count FROM query_usage WHERE email = ? AND query_date = ?",
-                (email, today),
+                [email, today],
             )
-            row = cursor.fetchone()
+            row = result.fetchone()
 
             if not row:
                 return self.daily_limit
 
-            return max(0, self.daily_limit - row["query_count"])
+            return max(0, self.daily_limit - row[0])
 
     def increment_usage(self, email: str) -> int:
         """
@@ -211,27 +211,24 @@ class AcademicUserService:
         today = date.today()
 
         with self._get_connection() as conn:
-            cursor = conn.cursor()
-
-            # Upsert query count
-            cursor.execute(
+            # Upsert query count - DuckDB syntax
+            conn.execute(
                 """
                 INSERT INTO query_usage (email, query_date, query_count)
                 VALUES (?, ?, 1)
-                ON CONFLICT(email, query_date)
-                DO UPDATE SET query_count = query_count + 1
+                ON CONFLICT (email, query_date)
+                DO UPDATE SET query_count = query_usage.query_count + 1
                 """,
-                (email, today),
+                [email, today],
             )
-            conn.commit()
 
             # Get new count
-            cursor.execute(
+            result = conn.execute(
                 "SELECT query_count FROM query_usage WHERE email = ? AND query_date = ?",
-                (email, today),
+                [email, today],
             )
-            row = cursor.fetchone()
-            return row["query_count"] if row else 1
+            row = result.fetchone()
+            return row[0] if row else 1
 
     def check_quota(self, email: str) -> tuple[bool, int]:
         """
@@ -260,38 +257,36 @@ class AcademicUserService:
         today = date.today()
 
         with self._get_connection() as conn:
-            cursor = conn.cursor()
-
             # Get user info
-            cursor.execute(
+            result = conn.execute(
                 "SELECT email, created_at, last_access FROM academic_users WHERE email = ?",
-                (email,),
+                [email],
             )
-            user_row = cursor.fetchone()
+            user_row = result.fetchone()
 
             if not user_row:
                 return {"error": "User not found"}
 
             # Get today's usage
-            cursor.execute(
+            result = conn.execute(
                 "SELECT query_count FROM query_usage WHERE email = ? AND query_date = ?",
-                (email, today),
+                [email, today],
             )
-            usage_row = cursor.fetchone()
-            queries_used = usage_row["query_count"] if usage_row else 0
+            usage_row = result.fetchone()
+            queries_used = usage_row[0] if usage_row else 0
 
             # Get total queries all time
-            cursor.execute(
+            result = conn.execute(
                 "SELECT SUM(query_count) as total FROM query_usage WHERE email = ?",
-                (email,),
+                [email],
             )
-            total_row = cursor.fetchone()
-            total_queries = total_row["total"] or 0
+            total_row = result.fetchone()
+            total_queries = total_row[0] or 0
 
             return {
-                "email": user_row["email"],
-                "created_at": user_row["created_at"],
-                "last_access": user_row["last_access"],
+                "email": user_row[0],
+                "created_at": str(user_row[1]),
+                "last_access": str(user_row[2]) if user_row[2] else None,
                 "queries_used_today": queries_used,
                 "queries_remaining_today": max(0, self.daily_limit - queries_used),
                 "daily_limit": self.daily_limit,
@@ -301,7 +296,6 @@ class AcademicUserService:
     def get_total_users(self) -> int:
         """Get total number of registered academic users."""
         with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) as count FROM academic_users")
-            row = cursor.fetchone()
-            return row["count"] if row else 0
+            result = conn.execute("SELECT COUNT(*) FROM academic_users")
+            row = result.fetchone()
+            return row[0] if row else 0

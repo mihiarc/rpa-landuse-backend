@@ -105,9 +105,9 @@ class Settings(BaseSettings):
         description="Maximum AI queries per day for academic users",
     )
     academic_user_db_path: str = Field(
-        default="data/academic_users.db",
+        default="md:landuse_analytics",
         alias="ACADEMIC_USER_DB_PATH",
-        description="SQLite database path for academic user storage",
+        description="DuckDB/MotherDuck path for academic user storage (md:database_name for cloud)",
     )
 
     # Logging

@@ -33,6 +33,8 @@ class Settings(BaseSettings):
             "http://localhost:3001",
             "http://127.0.0.1:3001",
             "https://rpa-landuse-frontend.netlify.app",
+            "https://rpalanduse.org",
+            "https://www.rpalanduse.org",
         ],
         description="Allowed CORS origins",
     )

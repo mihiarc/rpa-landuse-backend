@@ -16,8 +16,8 @@ dependencies = [
     # Authentication
     "bcrypt>=4.0.0",
     "PyJWT>=2.8.0",
-    # Landuse package for AI agent (from git - stronger table formatting instructions)
-    "rpa-landuse-analytics @ git+https://github.com/mihiarc/rpa-landuse.git@584cf55",
+    # Landuse package for AI agent (from git - bullet lists instead of tables)
+    "rpa-landuse-analytics @ git+https://github.com/mihiarc/rpa-landuse.git@6062a50",
 ]
 
 [project.optional-dependencies]
